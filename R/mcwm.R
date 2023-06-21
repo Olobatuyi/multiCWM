@@ -346,10 +346,11 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
       L[count]     <- lik + lik2 + lik3
       a_k          <- (L[count+1] - L[count]) / (L[count] - L[count-1])
       L[count + 2] <- L[count] + ((1-a_k)^-1 * (L[count+1] - L[count]))
+      dif <- abs(L[count+2] - L[count+1])
 
       if (show_table) {
 
-        dif <- abs(L[count+2] - L[count+1])
+        #dif <- abs(L[count+2] - L[count+1])
         out_table = data.frame(Iteration = count, Likelihood = L[count+2], difference = dif)
         print(knitr::kable(out_table))
 
