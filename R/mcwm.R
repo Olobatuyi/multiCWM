@@ -496,7 +496,25 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
 }
 
 ###############################################
-cmw_tru_use_real1 <- function(Y, w, u, v, k, maxit = 1000, tol = 0.1, show_table = FALSE){
+
+#' zipCwm Function for the clustering of data
+#' @param Y   The count variables which can be any of the form: vector, one column matrix,
+#' @param v    The feature or independent variable of the data.
+#' @param u    The feature or independent variable of the data.
+#' @param w    The feature or independent variable of the data.
+#' @param init This is the initial value to start the clustering algorithm.
+#' This can any of the options: random, mclust, or kmeans
+#' @param k The number of components which must be an integer
+#' @param maxit The maximum number of iterations to terminate the algorithm. This must be an integer.
+#' @param tol This is the tolenrance level of convergence dafault to 1e-10.
+#' @param show_table This is a logical parameter which is default to FALSE.
+#' @export
+#' @keywords zipCwm Clustering Algorithm
+#' @rdname zipCwm
+#' @return res which is a list containing the component mean and covariance matrix, the information criterion
+#'
+
+zipCwm <- function(Y, w, u, v, k, maxit = 1000, tol = 0.1, show_table = FALSE){
   
   x <- cbind(rep(1, nrow(w)), w,u,v);
   if(!is.data.frame(x)) x <- unname(as.matrix(x))
