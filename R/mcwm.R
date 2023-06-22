@@ -14,6 +14,10 @@
 # library(coda);library(VGAM)
 # library(mvnfast); library(fastDummies)
 # library(Rtsne)
+# require("gamlss.dist")
+# library(optimization)
+# require("ggplot2")
+
 
 #' Logit Function for depencies
 
@@ -490,3 +494,213 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
   return(res)
 
 }
+
+###############################################
+cmw_tru_use_real1 <- function(Y, w, u, v, k, maxit = 1000, tol = 0.1, show_table = FALSE){
+  
+  x <- cbind(rep(1, nrow(w)), w,u,v);
+  if(!is.data.frame(x)) x <- unname(as.matrix(x))
+  
+  eps <- sqrt(.Machine$double.eps); 
+  n   <- nrow(x)
+  W1  <- keras::to_categorical(u); 
+  W2  <- keras::to_categorical(v)
+  d   <- ncol(x); 
+  d1  <- ncol(w); 
+  c1  <- ncol(W1); 
+  c2  <- ncol(W2)
+  L1  <- ai  <- ai3 <- lb <- L <- NULL
+  L2  <- lf1 <- lf2 <- lp <- k1 <- matrix(NA, nrow = n, ncol = k)
+  dm1 <- lki <- lk2 <- Linf <- al <- NULL
+  pr  <- matrix(NA, nrow = n, ncol = (k-1))
+  lp1 <- dm <- lam <- matrix(NA, nrow = n, ncol = (k-1))
+  b   <- matrix(runif(d*(k-1)), nrow = (k-1))
+  
+  sigma <- wew <- list()
+  mean  <- matrix(runif(d1*(k-1)), nrow = k-1)
+  P1i   <- rep(1/k, k)
+  P1    <- P1i[1]; Pi <- P1i[-1]
+  
+  for(l in 1:(k-1))sigma[[l]] <- diag(d1)
+  m <- (k-1)*ncol(b) + (2 * (k-1) * d) + (k-1) + (k-1)*(d*d - d)/2
+  
+  sigma1 <- diag(d1)
+  mean1  <-  rnorm(d1)
+  
+  py1 <- colMeans(W1)
+  py2 <- colMeans(W2)
+  
+  py11 <- matrix(colMeans(W1), nrow = (k-1), ncol = c1, byrow = TRUE)
+  py21 <- matrix(colMeans(W2), nrow = (k-1), ncol = c2, byrow = TRUE)
+  
+  sig1 <- sig <- array(NA, c(d1,d1,n))
+  et1  <- list()
+  
+  count <- 2;
+  
+  L <- c(-16000,-15000,-14000);
+  
+  repeat{
+    
+    a   <- x %*% t(b)
+    lam <- exp(a)
+    
+    for (i in 1:n) {
+      
+      # Zero count
+      dm1[i] <- VGAM::dzipois(Y[i], lambda = 0) * P1 *
+        mvnfast::dmvn(w[i,], mean1, sigma1, ncores = 8) *
+        dmultinom(W1[i,], 1, prob = py1, log = FALSE) *
+        dmultinom(W2[i,], 1, prob = py2, log = FALSE)
+      
+      for(l in 1:(k-1)){
+        
+        # Non-zero count
+        dm[i,l] <- Pi[l] * mvnfast::dmvn(w[i,], mean[l,], sigma[[l]], ncores = 8) *
+          dpois(Y[i], lambda = lam[i,l]) * dmultinom(W1[i,], 1, prob = py11[l,], log = FALSE) *
+          dmultinom(W2[i,], 1, prob = py21[l,], log = FALSE) #* y3[i,l+1]
+      }
+      
+    }
+    
+    po  <- dm / rowSums(cbind(dm1, dm))
+    po1 <- 1 - rowSums(po)
+    Poc <- cbind(po1, po)
+    
+    ### For zeroes 
+    
+    for(i in 1:n){
+      
+      lf1[i,1]  <- po1[i] * dmultinom(W1[i,], 1, prob = py1, log = FALSE) * dzipois(Y[i], lambda = 0)
+      lf2[i,1]  <- po1[i] * dmultinom(W2[i,], 1, prob = py2, log = FALSE) * dzipois(Y[i], lambda = 0)
+      
+    }
+    
+    L2[,1]  <- po1 * mvnfast::dmvn(w, mean1, sigma1, ncores = 8,
+                     isChol = TRUE, log = FALSE) * dzipois(Y, lambda = 0)
+    
+    lp[,1] <- po1 * P1 * dzipois(Y, lambda = 0)
+    k1[,1] <- lf1[,1] * lf2[,1] * L2[,1] * lp[,1]
+    
+    ### For non-zeros
+    for (l in 1:(k-1)) {
+      
+      for (i in 1:n) {
+        
+        lf1[i,l+1] <- po[i,l] * dmultinom(W1[i,], 1, prob = py11[l,], log = FALSE) #* y3[i,l+1]
+        lf2[i,l+1] <- po[i,l] * dmultinom(W2[i,], 1, prob = py21[l,], log = FALSE) #* y3[i,l+1]
+        
+      }
+      
+      lp[,l+1] <- po[,l ] * dpois(Y, lambda = lam[,l], log = FALSE) #* y3[,l+1]
+      lp1[,l] <- po[,l] * Pi[l]
+      L2[,l+1]  <- po[,l] * mvnfast::dmvn(w, mean[l,], sigma[[l]], ncores = 8,
+                                          isChol = TRUE, log = FALSE) #* y3[,l+1]
+      
+      k1[,l+1] <- lf1[,l+1] * lf2[,l+1] * lp[,l+1] * L2[,l+1] * lp1[,l]
+      
+    }
+    
+    for(l in 1:(k-1)){
+      
+      LogLike <- function(par) {
+        
+        lambda <- exp(x %*% par)
+        LL <- -sum(po[,l] * dpois(Y, lambda, log = TRUE))
+        return(LL)
+        
+      }
+      
+      par <- b[l,]
+      
+      m.like <- optim_sa(fun = LogLike, start = par, 
+                         lower = rep(eps,ncol(x)),
+                         upper = rep(1, ncol(x)), trace = TRUE,
+                         control = list(t0 = 100, nlimit = 550, t_min = 0.1,
+                                        dyn_rf = F, rf = 1, r = 0.7))
+      b[l,] <- m.like$par
+    }
+    
+    # M-Step Updates
+    P1 <- sum(po1) / n
+    
+    mean1 <- colSums(po1 * w) / sum(po1)
+    
+    for (i in 1:n) sig1[,,i] <- po1[i] * outer((w[i,] - mean1),(w[i,] - mean1))
+    for(l in 1:(k-1)) mean[l,] <- colSums(po[,l] * w) / colSums(po)[l]
+    sigma1 <- apply(sig1, c(1, 2), sum)/ sum(po1) + diag(eps, ncol(w))
+    
+    for (l in 1:(k-1)) {
+      
+      for (i in 1:nrow(x)) {sig[,,i] <- po[i,l] * outer((w[i,] - mean[l,]),(w[i,] - mean[l,]))}
+      sigma[[l]] <- apply(sig, c(1, 2), sum)/ sum(po[,l]) + diag(eps, ncol(w))
+      
+    }
+    
+    #if(count %% 12 == 0){
+    
+    py1 <- (colSums(po1 *  W1) / sum(po1)) #+ 0.2
+    py2 <- (colSums(po1 *  W2) / sum(po1)) #+ 0.2
+    
+    for (l in 1:(k-1)) {
+      
+      py11[l, ] <- (colSums(po[,l] * W1) / colSums(po)[l])
+      py21[l, ] <- (colSums(po[,l] * W2) / colSums(po)[l])
+      
+    }
+    
+    #}
+    
+    Pi <- colSums(po) / n
+    
+    # Compute Log_likelihood lki, lk2,
+    
+    L[count] <- sum(log(rowSums(k1)))
+    a_k <- (L[count+1] - L[count]) / (L[count] - L[count-1])
+    L[count + 2] <- L[count] + ((1-a_k)^-1 * (L[count+1] - L[count]))
+    dif <- abs(L[count+2] - L[count+1])
+    
+    if (show_table) {
+      
+      #dif <- abs(L[count+2] - L[count+1])
+      out_table = data.frame(Iteration = count, Likelihood = L[count+2], difference = dif)
+      print(kable(out_table))
+      #if (count == maxit || dif < tol) break;
+      
+    }
+
+    if (count == maxit || dif < tol) break;
+    count <- count + 1
+    
+  }
+  
+  Z <- apply(Poc, 1, which.max)
+  Prof <- Poc1 <- Poc
+  
+  for(i in 1:n){
+    for(j in 1:k){      
+      Prof[i,j] <- ifelse(Poc[i,j] > 0.9, 1, 0)
+      if(Poc[i,j] > 0){
+        Poc1[i,j] <- log(Poc[i,j])
+      }
+    }
+  }
+  
+  ai   <- -2*L[count + 2] - 2*m;
+  ai3  <- -2*L[count + 2] - m*log(n)  
+  ICL  <-  ai3 + suppressWarnings(sum(rowSums(Prof * Poc1)))
+  AIcc <-  ai - 2*m*(m+1)/(n-m-1)
+  AIC3 <- -2*L[count+2] - 3*m
+  AICu <-  AIcc - n*log(n/(n-m-1))
+  ICL  <-  ai3 + suppressWarnings(sum(rowSums(Prof * Poc1)))
+  Caic <- -2*L[count+2] - m*(1+log(n))
+  AWE  <- -2*L[count+2] - 2*m*(3/2 + log(n))
+  
+  return(list("mean" = mean, "mean1" = mean1, "sigma1" = sigma1, "Prob1" = P1,
+              "prob2" = Pi, "post" = Poc,"poiwei" = b,
+              "classification" = Z, "logLik" = L, "AIC" = ai, "BIC" = ai3,
+              "sigma" = sigma, "ICL" = ICL, "AICc" = AIcc, "AIC3" = AIC3, 
+              "AICu" = AICu, "Caic" = Caic, "AWE" = AWE))
+  
+}
+
