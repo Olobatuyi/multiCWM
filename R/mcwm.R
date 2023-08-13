@@ -509,13 +509,11 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
 ###############################################
 
 #' zipCwm Function for the clustering of data
-#' @param Y   The count variables which can be any of the form: vector, one column matrix,
-#' @param v    The feature or independent variable of the data.
-#' @param u    The feature or independent variable of the data.
-#' @param w    The feature or independent variable of the data.
-#' @param init This is the initial value to start the clustering algorithm.
-#' This can any of the options: random, mclust, or kmeans
-#' @param k The number of components which must be an integer
+#' @param Y The count variables which can be any of the form: vector, one column matrix,
+#' @param v The feature or independent variable of the data.
+#' @param u The feature or independent variable of the data.
+#' @param w The feature or independent variable of the data.
+#' @param G The number of components which must be an integer
 #' @param maxit The maximum number of iterations to terminate the algorithm. This must be an integer.
 #' @param tol This is the tolenrance level of convergence dafault to 1e-10.
 #' @param show_table This is a logical parameter which is default to FALSE.
@@ -524,12 +522,12 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
 #' @rdname zipCwm
 #' @return res which is a list containing the component mean and covariance matrix, the information criterion
 #'
-
-zipCwm <- function(Y, w, u, v, k, maxit = 1000, tol = 0.1, show_table = FALSE){
+zipCwm <- function(Y, w, u, v, G, maxit = 1000, tol = 0.1, show_table = FALSE){
   
   x <- cbind(rep(1, nrow(w)), w,u,v);
   if(!is.data.frame(x)) x <- unname(as.matrix(x))
-  
+
+  k <- G
   eps <- sqrt(.Machine$double.eps); 
   n   <- nrow(x)
   W1  <- keras::to_categorical(u); 
@@ -724,12 +722,28 @@ zipCwm <- function(Y, w, u, v, k, maxit = 1000, tol = 0.1, show_table = FALSE){
   ICL  <-  ai3 + suppressWarnings(sum(rowSums(Prof * Poc1)))
   Caic <- -2*L[count+2] - m*(1+log(n))
   AWE  <- -2*L[count+2] - 2*m*(3/2 + log(n))
+
+  res <- list(
+    "mean"           = mean, 
+    "mean1"          = mean1, 
+    "sigma1"         = sigma1, 
+    "Prob1"          = P1,
+    "prob2"          = Pi, 
+    "post"           = Poc,
+    "poiwei"         = b,
+    "classification" = Z, 
+    "logLik"         = L, 
+    "AIC"            = ai, 
+    "BIC"            = ai3,
+    "sigma"          = sigma, 
+    "ICL"            = ICL, 
+    "AICc"           = AIcc, 
+    "AIC3"           = AIC3, 
+    "AICu"           = AICu, 
+    "Caic"           = Caic, 
+    "AWE"            = AWE)
   
-  return(list("mean" = mean, "mean1" = mean1, "sigma1" = sigma1, "Prob1" = P1,
-              "prob2" = Pi, "post" = Poc,"poiwei" = b,
-              "classification" = Z, "logLik" = L, "AIC" = ai, "BIC" = ai3,
-              "sigma" = sigma, "ICL" = ICL, "AICc" = AIcc, "AIC3" = AIC3, 
-              "AICu" = AICu, "Caic" = Caic, "AWE" = AWE))
+  return(res)
   
 }
 
