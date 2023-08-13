@@ -244,7 +244,7 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
   #sig <- array(NA, c(N, d))
   et1 <- list()
 
-  w <- w1 <- sigma <- list()
+  w <- w1 <- sigma <- z_val <- p_val <- list()
   m <- (G * c * (1 + d)) + (G * ((d * d - d)/2 + 2 * d + 1))
 
   if(init == "random"){
@@ -459,6 +459,15 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
     }
 
   }
+                
+  # Calculating z values and p values
+  for (l in 1:G) {
+    
+    # Check the Z-score for the model (wald Z)
+    z_val[[l]] <- et1[[l]]$coefficients/et1[[l]]$standard.errors
+    p_val[[l]] <- (1 - pnorm(abs(z_val[[l]]), 0, 1)) * 2
+    
+  }
 
   ### Information criterion
 
@@ -483,6 +492,8 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
     "BIC"            = ai3,
     "sigma"          = sigma,
     "reg_est"        = et1,
+    "z_val"          = z_val,
+    "p_val"          = p_val,
     "ICL"            = ICL,
     "AICc"           = AIcc,
     "AIC3"           = AIC3,
