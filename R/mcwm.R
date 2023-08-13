@@ -522,7 +522,7 @@ MultiCwm <- function(Y, x, G = 1, init = c("random", "mclust", "kmeans"), maxit 
 #' @rdname zipCwm
 #' @return res which is a list containing the component mean and covariance matrix, the information criterion
 #'
-zipCwm <- function(Y, w, u, v, G, maxit = 1000, tol = 0.1, show_table = FALSE){
+zipCwm <- function(Y, w, u, v, G, maxit = 1000, tol = 1e-10, show_table = FALSE){
   
   x <- cbind(rep(1, nrow(w)), w,u,v);
   if(!is.data.frame(x)) x <- unname(as.matrix(x))
